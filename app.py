@@ -1,47 +1,39 @@
 import face_recognition
 import cv2
+from flask import Flask, request, jsonify
 
-# Load an image with known faces
-known_image = face_recognition.load_image_file("Zanu.jpg")
+app = Flask(__name__)
 
-# Encode the known face(s)
-known_face_encoding = face_recognition.face_encodings(known_image)[0]
-known_face_names = ["Zanu"]  # Provide names for the known faces (can be a list of names)
+# Load the image of the known face
+known_face_image = face_recognition.load_image_file("fauzan.jpg")
+known_face_encoding = face_recognition.face_encodings(known_face_image)[0]
+threshold = 0.6  # Set a threshold for face verification (you can adjust this value)
 
-# Read a video stream from the webcam (change 0 to the path of a video file if using pre-recorded video)
-video_capture = cv2.VideoCapture(0)
+@app.route("/verify_face", methods=["POST"])
+def verify_face():
+    try:
+        # Get the uploaded image from the POST request
+        if "image" not in request.files:
+            return jsonify({"error": "No image provided"}), 400
 
-while True:
-    # Read a single frame from the video stream
-    ret, frame = video_capture.read()
+        photo_image = face_recognition.load_image_file(request.files["image"])
+        face_locations = face_recognition.face_locations(photo_image)
 
-    # Find all face locations and face encodings in the frame
-    face_locations = face_recognition.face_locations(frame)
-    face_encodings = face_recognition.face_encodings(frame, face_locations)
+        if len(face_locations) == 0:
+            return jsonify({"result": "No face found in the photo"}), 200
+        else:
+            photo_face_encoding = face_recognition.face_encodings(photo_image, face_locations)[0]
 
-    for face_encoding in face_encodings:
-        # Compare the face with known faces
-        matches = face_recognition.compare_faces([known_face_encoding], face_encoding)
-        name = "Unknown"
+            # Compare the face with the known face
+            face_distance = face_recognition.face_distance([known_face_encoding], photo_face_encoding)
 
-        if True in matches:
-            # Find the index of the first match and use the corresponding name
-            match_index = matches.index(True)
-            name = known_face_names[match_index]
+            if face_distance[0] <= threshold:
+                return jsonify({"result": "Face verified. It's the known person"}), 200
+            else:
+                return jsonify({"result": "Face not verified. It's not the known person"}), 200
 
-        # Draw a rectangle around the face and label it with the name
-        top, right, bottom, left = face_locations[0]
-        cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
-        font = cv2.FONT_HERSHEY_DUPLEX
-        cv2.putText(frame, name, (left + 6, bottom - 6), font, 0.5, (255, 255, 255), 1)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # Display the resulting frame
-    cv2.imshow('Video', frame)
-
-    # Break the loop if 'q' is pressed
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-# Release the video capture and close the OpenCV window
-video_capture.release()
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
